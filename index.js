@@ -1,31 +1,75 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const crypto = require('crypto'); // Node.js 内置加密模块
 
 const app = express();
 app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 3000;
 
-// 处理飞书事件
+// 飞书加密密钥（从飞书开放平台获取）
+const ENCRYPT_KEY = '你的加密密钥'; // 替换为实际密钥
+const VERIFICATION_TOKEN = '你的校验Token'; // 可选，用于额外验证
+
+// 统一设置 JSON Content-Type
+app.use((req, res, next) => {
+  res.setHeader('Content-Type', 'application/json');
+  next();
+});
+
+// 飞书消息解密函数
+function decryptFeishuMessage(encrypt, key) {
+  const keyBuf = Buffer.from(key + '=', 'base64'); // 飞书密钥需要补等号
+  const decoded = Buffer.from(encrypt, 'base64');
+  const iv = decoded.slice(0, 16);
+  const ciphertext = decoded.slice(16);
+  const decipher = crypto.createDecipheriv('aes-256-cbc', keyBuf, iv);
+  let decrypted = decipher.update(ciphertext, undefined, 'utf8');
+  decrypted += decipher.final('utf8');
+  return JSON.parse(decrypted);
+}
+
+// 处理飞书事件（支持加密）
 app.post('/feishu/event', (req, res) => {
-  const { type, challenge, encrypt } = req.body;
+  try {
+    const { type, challenge, encrypt, token } = req.body;
 
-  // 解密处理可在这里加逻辑（如果启用了加密）
+    // 1. 验证 Token（可选）
+    if (token && token !== VERIFICATION_TOKEN) {
+      return res.status(403).json({ code: 403, msg: 'Invalid token' });
+    }
 
-  if (type === 'url_verification') {
-    return res.send({ challenge });
+    // 2. 处理飞书URL验证（加密或明文模式）
+    if (type === 'url_verification') {
+      if (encrypt) {
+        // 解密 challenge
+        const decrypted = decryptFeishuMessage(encrypt, ENCRYPT_KEY);
+        return res.json({ challenge: decrypted.challenge });
+      } else {
+        return res.json({ challenge });
+      }
+    }
+
+    // 3. 处理加密事件
+    if (encrypt) {
+      const decryptedData = decryptFeishuMessage(encrypt, ENCRYPT_KEY);
+      console.log('解密后数据:', decryptedData);
+      // 实际业务逻辑处理...
+      return res.json({ code: 0, msg: 'success' });
+    }
+
+    // 4. 明文事件（不推荐）
+    console.log('明文事件:', JSON.stringify(req.body, null, 2));
+    res.json({ code: 0, msg: 'success' });
+
+  } catch (error) {
+    console.error('处理飞书事件异常:', error);
+    res.status(500).json({ code: 500, msg: 'Internal Server Error' });
   }
-
-  // 其他事件处理逻辑
-  console.log('事件接收：', JSON.stringify(req.body, null, 2));
-  res.sendStatus(200);
 });
 
-// 默认首页
-app.get('/', (req, res) => {
-  res.send('Feishu bot is running');
-});
+// 其他路由和错误处理...
+app.get('/', (req, res) => res.json({ status: 'running' }));
+app.use((err, req, res, next) => res.status(500).json({ code: 500, msg: 'Server Error' }));
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
