@@ -1,59 +1,61 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const crypto = require('crypto');
 
 const app = express();
+
+// 中间件配置
 app.use(bodyParser.json());
 app.use((req, res, next) => {
+  // 强制设置JSON响应头
   res.setHeader('Content-Type', 'application/json');
   next();
 });
 
-// 飞书配置（替换为实际值）
-const ENCRYPT_KEY = 'EUqqvvm4wAu0Ht4J39nSBdLra8c3Ntur'; // 必须与飞书后台一致
+// 飞书验证Token（可选）
 const VERIFICATION_TOKEN = 'Fdk0RL6yflrb62JGA1lUchkWDGjQaeqO';
 
-// 统一处理所有 POST 请求到根路径
+// 主路由处理
 app.post('/', (req, res) => {
-  res.type('json');
   try {
-    console.log('请求体:', req.body);
-    const { type, challenge, encrypt, token } = req.body;
+    console.log('收到飞书请求:', JSON.stringify(req.body, null, 2));
+    
+    const { type, challenge, token } = req.body;
 
-    // Token 验证（可选）
+    // 1. Token验证（可选）
     if (token && token !== VERIFICATION_TOKEN) {
-      return res.status(403).json({ code: 403, msg: 'Invalid token' });
+      console.warn('Token验证失败: 收到', token, '预期', VERIFICATION_TOKEN);
+      return res.status(403).json({ 
+        code: 403, 
+        msg: 'Invalid token' 
+      });
     }
 
-    // URL 验证
+    // 2. 处理URL验证
     if (type === 'url_verification') {
-      if (encrypt) {
-        const decrypted = decryptFeishuMessage(encrypt, ENCRYPT_KEY);
-        return res.json({ challenge: decrypted.challenge });
+      if (!challenge) {
+        throw new Error('缺少challenge字段');
       }
+      
+      console.log('URL验证通过，返回challenge:', challenge);
       return res.json({ challenge });
     }
 
-    // 其他事件
-    res.json({ code: 0, msg: 'success' });
+    // 3. 其他事件处理
+    console.log('处理常规事件');
+    return res.json({ code: 0, msg: 'success' });
+
   } catch (error) {
     console.error('处理错误:', error);
-    res.status(500).json({ code: 500, msg: error.message });
+    return res.status(500).json({ 
+      code: 500,
+      msg: error.message 
+    });
   }
 });
 
-// 解密函数
-function decryptFeishuMessage(encrypt, key) {
-  const keyBuf = Buffer.from(key, 'base64');
-  const decoded = Buffer.from(encrypt, 'base64');
-  const iv = decoded.slice(0, 16);
-  const ciphertext = decoded.slice(16);
-  const decipher = crypto.createDecipheriv('aes-256-cbc', keyBuf, iv);
-  let decrypted = decipher.update(ciphertext, undefined, 'utf8');
-  decrypted += decipher.final('utf8');
-  return JSON.parse(decrypted);
-}
-
-// 必须使用 Railway 的 PORT
+// 启动服务器
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`服务已启动，监听端口 ${PORT}`);
+  console.log('飞书验证Token:', VERIFICATION_TOKEN);
+});
