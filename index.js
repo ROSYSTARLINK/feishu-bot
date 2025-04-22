@@ -8,7 +8,7 @@ app.use(bodyParser.json());
 const PORT = process.env.PORT || 3000;
 
 // 飞书加密密钥（从飞书开放平台获取）
-const ENCRYPT_KEY = 'GXT1000000000000'; // 替换为实际密钥
+const ENCRYPT_KEY = 'EUqqvvm4wAu0Ht4J39nSBdLra8c3Ntur'; // 替换为实际密钥
 const VERIFICATION_TOKEN = 'Fdk0RL6yflrb62JGA1lUchkWDGjQaeqO'; // 可选，用于额外验证
 
 // 统一设置 JSON Content-Type
